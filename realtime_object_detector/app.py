@@ -1,18 +1,8 @@
 import time
 import edgeiq
-"""
-Use object detection to detect objects in the frame in realtime. The
-types of objects detected can be changed by selecting different models.
-
-To change the computer vision model, follow this guide:
-https://dashboard.alwaysai.co/docs/application_development/changing_the_model.html
-
-To change the engine and accelerator, follow this guide:
-https://dashboard.alwaysai.co/docs/application_development/changing_the_engine_and_accelerator.html
-"""
-
 
 def main():
+    #detects the object
     obj_detect = edgeiq.ObjectDetection(
             "alwaysai/mobilenet_ssd")
     obj_detect.load(engine=edgeiq.Engine.DNN)
@@ -29,11 +19,17 @@ def main():
                 edgeiq.Streamer() as streamer:
             # Allow Webcam to warm up
             time.sleep(2.0)
-            fps.start()
 
+            tracker = edgeiq.CentroidTracker(deregister_frames=20, max_distance=50)
+
+            fps.start()
+            
+            objects = {}
+            objectsCopy = {}
             # loop detection
             while True:
                 frame = video_stream.read()
+                frame = edgeiq.resize(frame, width=600)
                 results = obj_detect.detect_objects(frame, confidence_level=.5)
                 frame = edgeiq.markup_image(
                         frame, results.predictions, colors=obj_detect.colors)
@@ -42,11 +38,33 @@ def main():
                 text = ["Model: {}".format(obj_detect.model_id)]
                 text.append(
                         "Inference time: {:1.3f} s".format(results.duration))
-                text.append("Objects:")
 
-                for prediction in results.predictions:
-                    text.append("{}: {:2.2f}%".format(
-                        prediction.label, prediction.confidence * 100))
+                text.append("Item Count:")
+                objectsCopy = objects.copy()
+                objects = tracker.update(results.predictions)
+
+                if len(objects) < len(objectsCopy):
+                    for key in objects:
+                        del objectsCopy[key]
+                    for key in objectsCopy:
+                        text.append(("%s has been stolen!" % objectsCopy[key].label).format(results.duration))
+
+                #if len(objects) < count:
+                #    print('something left the frame')
+
+                #count = len(objects)
+
+                
+                #predictions = []
+                #for (object_id, prediction) in objects.items():
+                #    new_label = 'Object {}'.format(object_id)
+                #    prediction.label = new_label
+                #    text.append(new_label)
+                #    predictions.append(prediction)
+
+                #for prediction in results.predictions:
+                 #   text.append("{}: {:2.2f}%".format(
+                  #      prediction.label, prediction.confidence * 100))
 
                 streamer.send_data(frame, text)
 
